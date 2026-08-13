@@ -233,8 +233,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         </div>
         <div class="fg"><label>Responsável</label><input id="f-resp" placeholder="Quem toca agora"></div>
         <div class="fg"><label>Prazo de entrega</label><input type="date" id="f-prazo"></div>
-        <div class="fg"><label>Etapa atual</label><select id="f-etapa"></select></div>
+        <div class="fg"><label>Etapa atual</label><select id="f-etapa" onchange="trocouEtapa()"></select></div>
+        <!-- Previsão e justificativa valem para a ETAPA ATUAL, e cada etapa
+             guarda a sua. Assim dá para ver depois onde a obra ficou parada e
+             por quê — que é o que serve para cobrar quem atrasou. -->
+        <div class="fg"><label>Previsão nesta etapa</label><input id="f-prev" type="date" onchange="renderEsperaNota()"></div>
+        <div class="fg span2"><label>Justificativa da etapa <span id="f-just-etapa" style="font-weight:400;color:var(--gray-4)"></span></label>
+          <input id="f-just" type="text" placeholder="Ex.: aguardando vidro do fornecedor; curando silicone">
+          <div id="f-espera-nota" style="font-size:11.5px;margin-top:5px"></div>
+        </div>
         <div class="fg span2"><label>Observações</label><textarea id="f-obs" placeholder="Anotações da obra"></textarea></div>
+      </div>
+
+      <!-- Documentos da obra: a lista de corte, de ferragens e de vidros saem
+           prontas do CEM, entao aqui elas so precisam ser guardadas e achadas
+           depois. O rotulo diz o que e o arquivo sem precisar abrir. -->
+      <div class="fg span2" style="margin-top:14px">
+        <label>Documentos da obra</label>
+        <div id="ficha-docs" style="display:flex;flex-direction:column;gap:6px;margin:6px 0"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="f-doc-tipo" style="font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid #d5dbe0;font-family:inherit">
+            <option value="Lista de Corte">Lista de Corte</option>
+            <option value="Lista de Ferragens">Lista de Ferragens</option>
+            <option value="Lista de Vidros">Lista de Vidros</option>
+            <option value="Ordem de Produção">Ordem de Produção</option>
+            <option value="Projeto">Projeto</option>
+            <option value="Outro">Outro</option>
+          </select>
+          <input type="file" id="f-doc-arquivo" style="display:none" onchange="anexarDoc(event)">
+          <button type="button" class="btn btn-outline btn-sm" id="f-doc-btn"
+            onclick="document.getElementById('f-doc-arquivo').click()">📎 Anexar arquivo</button>
+          <span id="f-doc-status" style="font-size:11px;color:#7b8794"></span>
+        </div>
       </div>
 
       <div id="ficha-linha"></div>
@@ -271,6 +301,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         style="width:100%;padding:9px 11px;border:1px solid var(--gray-3);border-radius:var(--radius);font-family:inherit;font-size:14px;margin-bottom:8px"
         oninput="renderTipos()">
       <div id="tipos-lista"></div>
+
+      <!-- Os rotulos dos documentos anexados na ficha da obra. Ficam aqui para
+           o Ander cadastrar os que precisar sem depender de alteracao no codigo. -->
+      <div style="border-top:1px solid var(--gray-2);margin-top:20px;padding-top:16px">
+        <div class="modal-title" style="font-size:15px;margin-bottom:10px">📎 Tipos de Documento</div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <input id="tipodoc-novo" type="text" placeholder="Nome do tipo (ex.: Lista de Medição)"
+            style="flex:1;padding:9px 11px;border:1px solid var(--gray-3);border-radius:var(--radius);font-family:inherit;font-size:14px"
+            onkeydown="if(event.key==='Enter')addTipoDoc()">
+          <button class="btn btn-teal" onclick="addTipoDoc()">Adicionar</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--gray-4);margin-bottom:10px;line-height:1.5">
+          São os rótulos que aparecem ao anexar um documento na ficha da obra.
+          Um tipo já usado em algum documento não pode ser excluído.
+        </div>
+        <div id="tiposdoc-lista"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -428,6 +475,24 @@ function gravarLocal(){ localStorage.setItem(LS_KEY,JSON.stringify(dados)); }
 
 function status(txt,cor){ const e=document.getElementById('sync'); if(e){ e.textContent=txt; e.style.color=cor||'rgba(255,255,255,.85)'; } }
 
+// ---- SESSÃO VENCIDA ----
+// O crachá vale 8 horas. Quando vence, a leitura falha em silêncio (o módulo
+// cai na cópia local e a tela continua mostrando tudo) mas a gravação falha
+// com aviso — e o aviso dizia "verifique a internet", mandando a pessoa
+// procurar problema onde não havia.
+//
+// Agora diz o que é e leva de volta ao login.
+function sessaoExpirada(){
+  if(window.__sessaoExpirada) return;   // um aviso só, mesmo com várias chamadas
+  window.__sessaoExpirada = true;
+  try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem('dalum-sso'); }catch(e){}
+  alert('Sua sessão expirou.\n\n' +
+        'O acesso vale 8 horas e o seu venceu. Nada foi perdido — o que você ' +
+        'já tinha salvo continua guardado.\n\n' +
+        'Vamos voltar para a tela de entrada.');
+  location.reload();
+}
+
 // ---- SISTEMA EM MANUTENÇÃO ----
 // Ligada por uma variável no Cloudflare, para mexer no banco sem ninguém
 // gravando por cima. Melhor avisar do que a pessoa levar um erro seco no
@@ -500,6 +565,7 @@ async function buscarRemoto(){
   const r=await fetch(url,{cache:'no-store',headers:cabecalhos()});
   if(r.status===503){ let m=''; try{ m=(await r.json()).mensagem||''; }catch(e){} telaManutencao(m); throw new Error('Em manutencao'); }
   if(r.status===403){ bloqueioAcesso(); throw new Error('Acesso negado'); }
+  if(r.status===401){ sessaoExpirada(); throw new Error('Sessao expirada'); }
   if(!r.ok) throw new Error('Worker '+r.status);
   const j=await r.json();
   if(!j||typeof j!=='object'||Array.isArray(j)) return null;
@@ -513,6 +579,7 @@ async function enviarRemoto(payload){
     headers:cabecalhos({'Content-Type':'application/json'}),
     body:JSON.stringify({data:payload})
   });
+  if(r.status===401){ sessaoExpirada(); throw new Error('Sessao expirada'); }
   if(!r.ok) throw new Error('Worker '+r.status);
 }
 
@@ -604,6 +671,185 @@ async function atualizarDoBanco(manual){
 function novoId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function agoraHora(){ return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
 function agoraISO(){ return new Date().toISOString(); }
+
+// ---- DOCUMENTOS DA OBRA ----
+// As listas de corte, ferragens e vidros saem prontas do CEM. O modulo nao
+// calcula nada: guarda o arquivo e deixa achar depois, com um rotulo dizendo
+// o que e. Mesmo servico de arquivos que o Compras ja usa.
+const CLOUD_NAME='ks3znltm';
+const UPLOAD_PRESET='daluminium';
+
+// Os rotulos dos documentos. Comecam com estes, e o Ander cadastra outros pela
+// tela de Tipos — mesma ideia dos tipos de obra, para nao depender de mim toda
+// vez que aparecer um documento novo no processo.
+const TIPOS_DOC_PADRAO=['Lista de Corte','Lista de Ferragens','Lista de Vidros',
+  'Lista de Medição','Ordem de Produção','Projeto','Outro'];
+
+// Se ainda nao houver lista gravada, monta a partir do que ja esta em uso nos
+// documentos das obras, mais os padroes. Assim nenhum rotulo antigo se perde.
+function tiposDocDe(obj){
+  if(obj && Array.isArray(obj.tiposDoc) && obj.tiposDoc.length) return obj.tiposDoc;
+  const vistos={}, lista=[];
+  ((obj&&obj.obras)||[]).forEach(function(o){
+    ((o&&o.docs)||[]).forEach(function(d){
+      const t=(d.tipo||'').trim();
+      if(!t||vistos[t.toLowerCase()]) return;
+      vistos[t.toLowerCase()]=1; lista.push(t);
+    });
+  });
+  TIPOS_DOC_PADRAO.forEach(function(t){
+    if(vistos[t.toLowerCase()]) return;
+    vistos[t.toLowerCase()]=1; lista.push(t);
+  });
+  return lista;
+}
+
+function usoTipoDoc(obj,label){
+  let n=0;
+  ((obj&&obj.obras)||[]).forEach(function(o){
+    ((o&&o.docs)||[]).forEach(function(d){ if((d.tipo||'')===label) n++; });
+  });
+  return n;
+}
+
+function popularSelectDoc(){
+  const sel=document.getElementById('f-doc-tipo');
+  if(!sel) return;
+  sel.innerHTML=tiposDocDe(dados).map(function(l){
+    return '<option value="'+esc(l)+'">'+esc(l)+'</option>';
+  }).join('');
+}
+
+async function addTipoDoc(){
+  const inp=document.getElementById('tipodoc-novo');
+  const nome=inp.value.trim();
+  if(!nome) return;
+  const ok=await alterar(function(base){
+    const lista=tiposDocDe(base);
+    // Ja existe com outra caixa alta? Nao duplica.
+    if(lista.some(function(t){ return t.toLowerCase()===nome.toLowerCase(); })){ base.tiposDoc=lista; return; }
+    lista.push(nome);
+    base.tiposDoc=lista;
+  });
+  if(ok){ inp.value=''; renderTiposDoc(); popularSelectDoc(); }
+}
+
+async function removerTipoDoc(label){
+  const uso=usoTipoDoc(dados,label);
+  if(uso){
+    alert('"'+label+'" está em uso em '+uso+' documento(s).\n\n'+
+          'Não dá para excluir sem deixar esses documentos sem rótulo. '+
+          'Troque o rótulo deles primeiro, se quiser mesmo remover.');
+    return;
+  }
+  if(!confirm('Remover o tipo "'+label+'"?')) return;
+  const ok=await alterar(function(base){
+    base.tiposDoc=tiposDocDe(base).filter(function(t){ return t!==label; });
+  });
+  if(ok){ renderTiposDoc(); popularSelectDoc(); }
+}
+
+function renderTiposDoc(){
+  const el=document.getElementById('tiposdoc-lista');
+  if(!el) return;
+  el.innerHTML=tiposDocDe(dados).map(function(l){
+    const uso=usoTipoDoc(dados,l);
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;'+
+      'border-bottom:1px solid var(--gray-2)">'+
+      '<span style="flex:1;font-size:13px">'+esc(l)+'</span>'+
+      '<span style="font-size:11px;color:var(--gray-4)">'+(uso?uso+' em uso':'não usado')+'</span>'+
+      '<button type="button" onclick="removerTipoDoc(\''+esc(l).replace(/'/g,"\\'")+'\')"'+
+        ' title="Remover" style="border:0;background:transparent;color:'+(uso?'var(--gray-3)':'#c0392b')+
+        ';cursor:pointer;font-size:15px;padding:0 4px">&times;</button>'+
+      '</div>';
+  }).join('');
+}
+
+// Os documentos ficam numa lista de rascunho enquanto a ficha esta aberta, e
+// so entram na obra quando voce salva. Assim, anexar e desistir nao deixa
+// arquivo perdido no meio do caminho.
+let fichaDocs=[];
+
+function fmtTamanho(b){
+  return b>1048576 ? (b/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(b/1024))+' KB';
+}
+
+async function anexarDoc(ev){
+  const arq=ev.target.files && ev.target.files[0];
+  ev.target.value='';           // permite anexar o mesmo arquivo de novo
+  if(!arq) return;
+
+  // 10 MB e o limite do plano gratuito do servico de arquivos. Avisar antes
+  // e melhor do que deixar a pessoa esperar o envio para levar erro no fim.
+  if(arq.size>10*1024*1024){
+    alert('Arquivo muito grande: '+fmtTamanho(arq.size)+'.\n\n'+
+          'O limite e 10 MB. Se for um PDF de projeto, tente salvar em qualidade menor.');
+    return;
+  }
+
+  const st=document.getElementById('f-doc-status');
+  const btn=document.getElementById('f-doc-btn');
+  btn.disabled=true;
+  st.textContent='Enviando '+arq.name+'...';
+  try{
+    const ehPdf=arq.type==='application/pdf';
+    const fd=new FormData();
+    fd.append('file',arq);
+    fd.append('upload_preset',UPLOAD_PRESET);
+    fd.append('folder','daluminium_fabrica');
+    const r=await fetch('https://api.cloudinary.com/v1_1/'+CLOUD_NAME+'/'+(ehPdf?'raw':'auto')+'/upload',
+      {method:'POST',body:fd});
+    if(!r.ok) throw new Error('Servidor de arquivos recusou ('+r.status+')');
+    const j=await r.json();
+    fichaDocs.push({
+      id:novoId(),
+      tipo:document.getElementById('f-doc-tipo').value,
+      nome:arq.name,
+      url:j.secure_url,
+      tamanho:arq.size,
+      quem:usuario,
+      quando:agoraISO()
+    });
+    renderDocs();
+    st.textContent='';
+  }catch(e){
+    st.textContent='';
+    alert('Nao consegui anexar o arquivo.\n\n'+e.message+
+          '\n\nO documento NAO foi guardado. Tente de novo.');
+  }
+  btn.disabled=false;
+}
+
+function removerDoc(id){
+  const d=fichaDocs.find(x=>x.id===id);
+  if(!d) return;
+  if(!confirm('Remover "'+d.nome+'" desta obra?\n\nO arquivo sai da ficha quando voce salvar.')) return;
+  fichaDocs=fichaDocs.filter(x=>x.id!==id);
+  renderDocs();
+}
+
+function renderDocs(){
+  const el=document.getElementById('ficha-docs');
+  if(!el) return;
+  if(!fichaDocs.length){
+    el.innerHTML='<div style="font-size:11.5px;color:#9aa5b1">Nenhum documento anexado.</div>';
+    return;
+  }
+  el.innerHTML=fichaDocs.map(function(d){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;'+
+      'background:#f7f9fa;border:1px solid #e3e8eb;border-radius:8px">'+
+      '<span style="font-size:10px;font-weight:700;text-transform:uppercase;color:#0e7490;'+
+        'background:#e0f2f5;padding:2px 6px;border-radius:5px;white-space:nowrap">'+
+        (d.tipo||'Documento')+'</span>'+
+      '<a href="'+d.url+'" target="_blank" rel="noopener" '+
+        'style="flex:1;font-size:12px;color:#2c3e50;text-decoration:none;overflow:hidden;'+
+        'text-overflow:ellipsis;white-space:nowrap" title="'+d.nome+'">'+d.nome+'</a>'+
+      '<span style="font-size:10.5px;color:#9aa5b1;white-space:nowrap">'+fmtTamanho(d.tamanho||0)+'</span>'+
+      '<button type="button" onclick="removerDoc(\''+d.id+'\')" title="Remover"'+
+        ' style="border:0;background:transparent;color:#c0392b;cursor:pointer;font-size:14px;padding:0 2px">&times;</button>'+
+      '</div>';
+  }).join('');
+}
 function fmtData(d){ if(!d) return '—'; const p=String(d).split('-'); return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:d; }
 function fmtQuando(iso){
   if(!iso) return '';
@@ -631,6 +877,84 @@ function classePrazo(o){
   if(d<=2) return 'hoje';
   return '';
 }
+// ---- PREVISÃO E JUSTIFICATIVA POR ETAPA ----
+// Atrasos acontecem em várias etapas, não só numa. Guardando previsão e motivo
+// em CADA etapa, o quadro deixa de mostrar "obra parada" e passa a mostrar onde
+// ela parou, por quê e há quantos dias — que é o que serve para cobrar.
+//
+// O responsável já vem da própria etapa (Compras, Produção, Qualidade...),
+// então a cobrança sai com endereço.
+function esperaDe(o, etapaId){
+  const e = (o && o.espera && o.espera[etapaId]) || null;
+  return { previsao: (e && e.previsao) || '', motivo: (e && e.motivo) || '' };
+}
+
+// Quantos dias a obra está na etapa atual. Vem do marco de entrada, que o
+// módulo já gravava desde o começo.
+function diasNaEtapa(o){
+  const ent = o && o.marcos && o.marcos[o.etapa];
+  if(!ent) return null;
+  const d = Math.floor((Date.now() - new Date(ent).getTime()) / 86400000);
+  return d < 0 ? 0 : d;
+}
+
+// O aviso que aparece no cartão. Prioridade: atraso em relação à previsão,
+// depois a justificativa, depois o tempo parado.
+function pillEspera(o){
+  if(o.etapa==='entrega') return '';
+  const e = esperaDe(o, o.etapa);
+  const dias = diasNaEtapa(o);
+
+  // A justificativa vai numa LINHA PRÓPRIA, ocupando a largura toda do cartão.
+  // Dentro da etiqueta ela era cortada — "transporte em atra…" — e o texto
+  // completo só aparecia passando o mouse, o que no celular não existe.
+  const linhaMotivo = e.motivo
+    ? '<span style="flex-basis:100%;font-size:11px;color:var(--gray-5);line-height:1.35">'+
+      esc(e.motivo)+'</span>'
+    : '';
+
+  if(e.previsao){
+    const d = diasAte(e.previsao);
+    if(d !== null && d < 0){
+      return '<span class="pill pill-atraso">etapa atrasada '+Math.abs(d)+'d</span>'+linhaMotivo;
+    }
+    return '<span class="pill pill-resp">prev. '+fmtData(e.previsao)+'</span>'+linhaMotivo;
+  }
+  if(e.motivo){
+    return '<span class="pill pill-hoje">'+(dias!==null?'parada '+dias+'d':'em espera')+'</span>'+linhaMotivo;
+  }
+  // Sem previsão nem motivo: só avisa quando o tempo parado já chama atenção.
+  if(dias !== null && dias >= 7){
+    return '<span class="pill pill-hoje" title="Sem justificativa registrada">parada há '+dias+'d</span>';
+  }
+  return '';
+}
+
+// Carrega na tela a previsão e a justificativa da etapa escolhida no momento.
+function trocouEtapa(){
+  const sel=document.getElementById('f-etapa');
+  const et=sel?sel.value:'';
+  const base=fichaBase||{};
+  const e=esperaDe(base, et);
+  document.getElementById('f-prev').value=e.previsao||'';
+  document.getElementById('f-just').value=e.motivo||'';
+  const nome=ETAPAS.find(function(x){ return x.id===et; });
+  document.getElementById('f-just-etapa').textContent = nome ? '— '+nome.nome+' · '+nome.resp : '';
+  renderEsperaNota();
+}
+
+function renderEsperaNota(){
+  const el=document.getElementById('f-espera-nota');
+  if(!el) return;
+  const prev=document.getElementById('f-prev').value;
+  if(!prev){ el.textContent=''; return; }
+  const d=diasAte(prev);
+  if(d===null){ el.textContent=''; return; }
+  if(d<0){ el.style.color='#c0392b'; el.textContent='Previsão vencida há '+Math.abs(d)+' dia(s).'; }
+  else if(d===0){ el.style.color='#b9770e'; el.textContent='A previsão é hoje.'; }
+  else { el.style.color='var(--gray-4)'; el.textContent='Faltam '+d+' dia(s) para a previsão.'; }
+}
+
 function pillPrazo(o){
   if(o.etapa==='entrega') return '<span class="pill pill-ok">Entregue</span>';
   const d=diasAte(o.prazo);
@@ -684,8 +1008,13 @@ function htmlCartao(o){
     '<div class="cartao-titulo">'+esc(o.cliente||'(sem cliente)')+(o.obra?' <span style="font-weight:400;color:var(--gray-5)">· '+esc(o.obra)+'</span>':'')+'</div>'+
     '<div class="cartao-meta">'+
       pillPrazo(o)+
+      pillEspera(o)+
       (o.tipo?'<span class="pill pill-tipo">'+esc(o.tipo)+'</span>':'')+
       (o.responsavel?'<span class="pill pill-resp">'+esc(o.responsavel)+'</span>':'')+
+      // Clipe com o numero de documentos: mostra de longe quais obras ja tem
+      // a lista do CEM e quais ainda estao esperando.
+      ((o.docs&&o.docs.length)?'<span class="pill" style="background:#e0f2f5;color:#0e7490" '+
+        'title="'+o.docs.length+' documento(s) anexado(s)">&#128206; '+o.docs.length+'</span>':'')+
     '</div></div>';
 }
 
@@ -759,7 +1088,7 @@ function popularSelectTipo(valorAtual){
   }
 }
 
-function openTipos(){ renderTipos(); document.getElementById('tipos-ov').classList.add('open'); }
+function openTipos(){ renderTipos(); renderTiposDoc(); document.getElementById('tipos-ov').classList.add('open'); }
 function closeTipos(){ document.getElementById('tipos-ov').classList.remove('open'); }
 
 function renderTipos(){
@@ -893,6 +1222,12 @@ function novaObra(){
   document.getElementById('f-prazo').value='';
   document.getElementById('f-etapa').value=ETAPAS[0].id;
   document.getElementById('f-obs').value='';
+  fichaDocs=[];
+  popularSelectDoc();
+  renderDocs();
+  document.getElementById('f-prev').value='';
+  document.getElementById('f-just').value='';
+  document.getElementById('f-espera-nota').textContent='';
   document.getElementById('ficha-linha').innerHTML='';
   document.getElementById('ficha-hist').innerHTML='';
   document.getElementById('ficha-btn-excluir').style.display='none';   // obra nova ainda nao existe
@@ -914,6 +1249,10 @@ function abrirFicha(id){
   document.getElementById('f-prazo').value=o.prazo||'';
   document.getElementById('f-etapa').value=o.etapa||ETAPAS[0].id;
   document.getElementById('f-obs').value=o.obs||'';
+  fichaDocs=Array.isArray(o.docs)?JSON.parse(JSON.stringify(o.docs)):[];
+  popularSelectDoc();
+  renderDocs();
+  trocouEtapa();          // traz a previsão e a justificativa da etapa atual
   document.getElementById('ficha-linha').innerHTML=htmlLinhaEtapas(o);
   document.getElementById('ficha-hist').innerHTML=htmlHistorico(o);
   // Obra excluida abre em modo consulta: da para restaurar, nao para editar.
@@ -1080,7 +1419,11 @@ async function salvarFicha(){
   const id=fichaId;
   const ok=await alterar(async function(base){
     if(!id){
-      const o=Object.assign({id:novoId(),criadoPor:usuario,criadoEm:agoraISO(),marcos:{},historico:[]},novo);
+      const o=Object.assign({id:novoId(),criadoPor:usuario,criadoEm:agoraISO(),marcos:{},historico:[],docs:[]},novo);
+      o.docs=fichaDocs.slice();
+      const _p=document.getElementById('f-prev').value||'';
+      const _j=document.getElementById('f-just').value.trim();
+      if(_p||_j) o.espera={[o.etapa]:{previsao:_p,motivo:_j,por:usuario,em:agoraISO()}};
       o.marcos[o.etapa]=agoraISO();
       o.historico=[{quando:agoraISO(),quem:usuario,evento:'criacao'}];
       base.obras.push(o);
@@ -1090,7 +1433,11 @@ async function salvarFicha(){
     // Obra sumiu do banco (nao deveria acontecer — nao existe excluir).
     // Devolve a minha versao em vez de perder o registro.
     if(!o){
-      o=Object.assign({id:id,marcos:{},historico:[]},fichaBase||{},novo);
+      o=Object.assign({id:id,marcos:{},historico:[],docs:[]},fichaBase||{},novo);
+      o.docs=fichaDocs.slice();
+      const _p=document.getElementById('f-prev').value||'';
+      const _j=document.getElementById('f-just').value.trim();
+      if(_p||_j) o.espera={[o.etapa]:{previsao:_p,motivo:_j,por:usuario,em:agoraISO()}};
       base.obras.push(o);
       return;
     }
@@ -1134,8 +1481,40 @@ async function salvarFicha(){
     });
     const historico=unirHistorico(o.historico,(fichaBase&&fichaBase.historico)||[]).concat(novasLinhas);
 
+    // Documentos sao lista, entao seguem a regra do historico: UNIAO, nunca
+    // substituicao. Se duas pessoas anexarem ao mesmo tempo, os dois arquivos
+    // ficam — a minha tela nao apaga o que a outra acabou de mandar.
+    //
+    // A excecao e o que EU removi de proposito: comparo com o que existia
+    // quando abri a ficha para saber a diferenca entre "removi" e "nunca vi".
+    const docsBanco = Array.isArray(o.docs) ? o.docs : [];
+    const docsAbertura = (fichaBase && Array.isArray(fichaBase.docs)) ? fichaBase.docs : [];
+    const meusIds = fichaDocs.map(function(d){ return d.id; });
+    const removidos = docsAbertura
+      .filter(function(d){ return meusIds.indexOf(d.id)<0; })
+      .map(function(d){ return d.id; });
+
+    const juntos = docsBanco.concat(fichaDocs).filter(function(d,i,todos){
+      if(removidos.indexOf(d.id)>=0) return false;
+      return todos.findIndex(function(x){ return x.id===d.id; })===i;   // sem repetir
+    });
+
     Object.assign(o,resultado);
     o.historico=historico;
+    o.docs=juntos;
+
+    // Previsão e justificativa da etapa que está na tela. As demais etapas do
+    // banco ficam como estão — a minha tela não sabe nada sobre elas e não tem
+    // por que sobrescrever.
+    if(!o.espera || typeof o.espera!=='object') o.espera={};
+    const etAlvo = resultado.etapa || o.etapa;
+    const prevTela = document.getElementById('f-prev').value || '';
+    const justTela = document.getElementById('f-just').value.trim();
+    if(prevTela || justTela){
+      o.espera[etAlvo] = { previsao:prevTela, motivo:justTela, por:usuario, em:quando };
+    } else {
+      delete o.espera[etAlvo];      // limpou os dois campos: some o registro
+    }
   });
   if(ok) fecharFicha();
 }

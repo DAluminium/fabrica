@@ -191,10 +191,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="btn btn-ghost btn-sm" onclick="atualizarDoBanco(true)" title="Buscar alterações de outras pessoas agora">
         <svg class="icon" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Atualizar
       </button>
-      <button class="btn btn-ghost btn-sm" onclick="openTipos()" title="Gerenciar tipos de obra">
-        <svg class="icon" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Tipos
+      <button class="btn btn-ghost btn-sm" onclick="openTipos()" title="Cadastrar etapas do fluxo, tipos de obra e tipos de documento">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Cadastros
       </button>
-      <button class="btn btn-ghost btn-sm" onclick="novaObra()">
+      <button class="btn btn-ghost btn-sm" data-so-gestor onclick="novaObra()">
         <svg class="icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nova
       </button>
       <button class="btn btn-ghost btn-sm" id="btn-sair" onclick="sairDaFabrica()" style="display:none" title="Encerrar a sessão neste módulo">
@@ -280,13 +280,57 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 
 <!-- TIPOS DE OBRA -->
+<!-- AVISO — substitui o alert() do navegador.
+     O navegador escreve "daluminium.github.io diz" em cima da própria janela e
+     não deixa mudar isso: é proteção dele, para a pessoa saber quem está
+     falando. A saída é não usar a janela dele.
+     z-index acima das outras porque um aviso pode nascer de dentro de uma
+     janela já aberta — a ficha da obra ou a de cadastros. -->
+<div class="overlay" id="aviso-ov" style="z-index:400">
+  <div class="modal" style="max-width:430px">
+    <div class="modal-head">
+      <div class="modal-title" id="aviso-titulo">Aviso</div>
+    </div>
+    <div class="modal-body">
+      <div id="aviso-texto" style="font-size:13.5px;line-height:1.6;white-space:pre-line;color:var(--gray-6)"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-teal" id="aviso-btn" onclick="fecharAviso()">Entendi</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="tipos-ov">
   <div class="modal" style="max-width:520px">
     <div class="modal-head">
-      <div class="modal-title">🏷️ Tipos de Obra</div>
+      <div class="modal-title">⚙️ Cadastros</div>
       <button class="btn btn-outline btn-sm" onclick="closeTipos()">Fechar</button>
     </div>
     <div class="modal-body">
+      <!-- ETAPAS DO FLUXO — as colunas do quadro. Vêm primeiro porque são a
+           configuração que mais mexe no dia a dia. -->
+      <div id="secao-etapas" style="margin-bottom:24px">
+        <div class="modal-title" style="font-size:15px;margin-bottom:10px">🔀 Etapas do fluxo</div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+          <input id="etapa-nova" type="text" placeholder="Nome da etapa (ex.: Separação de Material)"
+            style="flex:1;min-width:180px;padding:9px 11px;border:1px solid var(--gray-3);border-radius:var(--radius);font-family:inherit;font-size:14px"
+            onkeydown="if(event.key==='Enter')addEtapa()">
+          <input id="etapa-nova-resp" type="text" placeholder="Responsável (ex.: PCP)"
+            style="width:150px;padding:9px 11px;border:1px solid var(--gray-3);border-radius:var(--radius);font-family:inherit;font-size:14px"
+            onkeydown="if(event.key==='Enter')addEtapa()">
+          <button class="btn btn-teal" onclick="addEtapa()">Adicionar</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--gray-4);margin-bottom:10px;line-height:1.5">
+          A etapa nova entra no fim; use as setas para colocá-la no lugar certo do fluxo.
+          Etapa com obra dentro não pode ser excluída — inative, e ela sai do quadro
+          quando a última obra sair dela.
+        </div>
+        <div id="etapas-lista"></div>
+      </div>
+
+      <div style="border-top:1px solid var(--gray-2);padding-top:16px">
+        <div class="modal-title" style="font-size:15px;margin-bottom:10px">🏷️ Tipos de Obra</div>
+      </div>
       <div style="display:flex;gap:6px;margin-bottom:14px">
         <input id="tipo-novo" type="text" placeholder="Nome do novo tipo (ex.: Guarda-corpo)"
           style="flex:1;padding:9px 11px;border:1px solid var(--gray-3);border-radius:var(--radius);font-family:inherit;font-size:14px"
@@ -354,7 +398,13 @@ const SUPA_SISTEMA='fabrica';
 const LS_KEY='dalum-fabrica';
 
 // As 13 etapas do fluxo (a venda fica no CEM, fora daqui)
-const ETAPAS=[
+// As etapas deixaram de ser fixas: o Ander cadastra, reordena, inativa e
+// exclui pela tela de Configurações. Estas aqui são só o ponto de partida de
+// quem nunca mexeu.
+//
+// O `id` de uma etapa NUNCA muda depois de criada — as obras guardam o id, e
+// trocá-lo faria a obra apontar para o nada. Renomear mexe só no rótulo.
+const ETAPAS_PADRAO=[
   {id:'conferencia', nome:'Conferência Técnica', resp:'Projetista'},
   {id:'op',          nome:'Ordem de Produção',   resp:'PCP'},
   {id:'materiais',   nome:'Compra de Materiais', resp:'Compras'},
@@ -370,8 +420,48 @@ const ETAPAS=[
   {id:'entrega',     nome:'Termo de Entrega',    resp:'Cliente'}
 ];
 
+// A lista em uso. É recalculada a cada leitura de dados, para que todo o resto
+// do arquivo continue lendo `ETAPAS` como sempre leu.
+let ETAPAS=ETAPAS_PADRAO.map(function(e){ return Object.assign({ativo:true},e); });
+
+function etapasDe(obj){
+  if(obj && Array.isArray(obj.etapas) && obj.etapas.length) return obj.etapas;
+  return ETAPAS_PADRAO.map(function(e){ return Object.assign({ativo:true},e); });
+}
+
+// Quantas obras estão numa etapa. Serve para não deixar excluir etapa em uso.
+function usoEtapa(obj,id){
+  return ((obj&&obj.obras)||[]).filter(function(o){ return !o.excluida && o.etapa===id; }).length;
+}
+
+// Atualiza a lista em uso a partir dos dados, e garante uma coisa: nenhuma
+// obra pode sumir do quadro.
+//
+// Se uma obra aponta para uma etapa que não existe mais — apagada por engano,
+// ou dado antigo —, a etapa volta para a lista marcada como órfã. É melhor uma
+// coluna estranha aparecer do que uma obra desaparecer sem ninguém notar.
+function sincronizarEtapas(){
+  const lista=etapasDe(dados).map(function(e){ return Object.assign({},e); });
+  const temId={};
+  lista.forEach(function(e){ temId[e.id]=true; });
+  const orfas=[];
+  ((dados&&dados.obras)||[]).forEach(function(o){
+    const id=o&&o.etapa;
+    if(!id||temId[id]||orfas.indexOf(id)>=0) return;
+    orfas.push(id);
+  });
+  orfas.forEach(function(id){
+    lista.push({id:id,nome:'(etapa removida: '+id+')',resp:'—',ativo:true,orfa:true});
+  });
+  ETAPAS=lista;
+}
+
 let dados={obras:[]};
 let usuario='';
+// Papel de quem entrou: admin, gerente, compras, financeiro ou consulta.
+// Cadastrar obra e mexer nas etapas do fluxo e coisa de admin e gerente.
+let papel='';
+function podeGerenciar(){ return papel==='admin' || papel==='gerente'; }
 let view='quadro';
 // Quando ligado, a tela mostra a lixeira (obras excluidas) em vez das ativas.
 let verExcluidas=false;
@@ -475,6 +565,28 @@ function gravarLocal(){ localStorage.setItem(LS_KEY,JSON.stringify(dados)); }
 
 function status(txt,cor){ const e=document.getElementById('sync'); if(e){ e.textContent=txt; e.style.color=cor||'rgba(255,255,255,.85)'; } }
 
+// ---- AVISO NA TELA ----
+// No lugar do alert() do navegador. Ganha título, sai o "daluminium.github.io
+// diz" e fica no visual do sistema.
+//
+// Uma diferença que importa: o alert() do navegador PARA o código até a pessoa
+// clicar; este não para. Onde o que vem depois do aviso não pode acontecer
+// antes da leitura — recarregar a página, por exemplo — passe a ação em
+// `aoFechar`, que roda no clique.
+let _avisoAoFechar=null;
+function aviso(titulo, texto, aoFechar){
+  document.getElementById('aviso-titulo').textContent = titulo || 'Aviso';
+  document.getElementById('aviso-texto').textContent  = texto || '';
+  _avisoAoFechar = aoFechar || null;
+  document.getElementById('aviso-ov').classList.add('open');
+  setTimeout(function(){ const b=document.getElementById('aviso-btn'); if(b) b.focus(); }, 60);
+}
+function fecharAviso(){
+  document.getElementById('aviso-ov').classList.remove('open');
+  const fn=_avisoAoFechar; _avisoAoFechar=null;
+  if(fn) fn();
+}
+
 // ---- SESSÃO VENCIDA ----
 // O crachá vale 8 horas. Quando vence, a leitura falha em silêncio (o módulo
 // cai na cópia local e a tela continua mostrando tudo) mas a gravação falha
@@ -486,11 +598,11 @@ function sessaoExpirada(){
   if(window.__sessaoExpirada) return;   // um aviso só, mesmo com várias chamadas
   window.__sessaoExpirada = true;
   try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem('dalum-sso'); }catch(e){}
-  alert('Sua sessão expirou.\n\n' +
+  aviso('Sessão expirada',
         'O acesso vale 8 horas e o seu venceu. Nada foi perdido — o que você ' +
         'já tinha salvo continua guardado.\n\n' +
-        'Vamos voltar para a tela de entrada.');
-  location.reload();
+        'Vamos voltar para a tela de entrada.',
+        function(){ location.reload(); });
 }
 
 // ---- SISTEMA EM MANUTENÇÃO ----
@@ -609,7 +721,7 @@ async function alterar(fn){
     try{ confere=await buscarRemoto(); }catch(e){ confere=null; }
     if(!confere || confere.atualizadoEm!==carimbo){
       status('🔴 NÃO gravou no servidor','#ffcccc');
-      alert('ATENÇÃO — os dados NÃO foram salvos.\n\n'+
+      aviso('Os dados NÃO foram salvos',
             'O servidor respondeu que deu certo, mas ao conferir, a informação não estava lá.\n\n'+
             'A causa mais comum é o registro do módulo ainda não ter sido criado no banco.\n\n'+
             'Não continue cadastrando: o que você digitar será perdido. Avise o responsável pelo sistema.');
@@ -621,7 +733,7 @@ async function alterar(fn){
     return true;
   }catch(e){
     status('🔴 Não salvou — sem conexão','#ffcccc');
-    alert('Não foi possível salvar agora.\n\nVerifique a internet e tente de novo. Nada foi perdido: seus dados continuam na tela.');
+    aviso('Não foi possível salvar','Verifique a internet e tente de novo.\n\nNada foi perdido: seus dados continuam na tela.');
     return false;
   }
 }
@@ -737,7 +849,7 @@ async function addTipoDoc(){
 async function removerTipoDoc(label){
   const uso=usoTipoDoc(dados,label);
   if(uso){
-    alert('"'+label+'" está em uso em '+uso+' documento(s).\n\n'+
+    aviso('Tipo em uso','"'+label+'" está em uso em '+uso+' documento(s).\n\n'+
           'Não dá para excluir sem deixar esses documentos sem rótulo. '+
           'Troque o rótulo deles primeiro, se quiser mesmo remover.');
     return;
@@ -782,7 +894,7 @@ async function anexarDoc(ev){
   // 10 MB e o limite do plano gratuito do servico de arquivos. Avisar antes
   // e melhor do que deixar a pessoa esperar o envio para levar erro no fim.
   if(arq.size>10*1024*1024){
-    alert('Arquivo muito grande: '+fmtTamanho(arq.size)+'.\n\n'+
+    aviso('Arquivo muito grande','O arquivo tem '+fmtTamanho(arq.size)+'.\n\n'+
           'O limite e 10 MB. Se for um PDF de projeto, tente salvar em qualidade menor.');
     return;
   }
@@ -814,7 +926,7 @@ async function anexarDoc(ev){
     st.textContent='';
   }catch(e){
     st.textContent='';
-    alert('Nao consegui anexar o arquivo.\n\n'+e.message+
+    aviso('Não consegui anexar','O envio falhou: '+e.message+
           '\n\nO documento NAO foi guardado. Tente de novo.');
   }
   btn.disabled=false;
@@ -987,6 +1099,7 @@ function setView(v){
 }
 
 function render(){
+  sincronizarEtapas();   // a lista de etapas vem dos dados, e eles podem ter mudado
   const alvo=document.getElementById('conteudo');
   const lista=filtradas();
   if(verExcluidas && !excluidas().length){
@@ -997,7 +1110,7 @@ function render(){
   if(!verExcluidas && !ativas().length){
     alvo.innerHTML='<div class="vazio"><div class="vazio-t">Nenhuma obra cadastrada</div>'+
       '<p style="font-size:13px;margin-bottom:16px">Comece adicionando as obras que ainda estão para entregar.</p>'+
-      '<button class="btn btn-teal" onclick="novaObra()">Cadastrar primeira obra</button></div>';
+      (podeGerenciar()?'<button class="btn btn-teal" onclick="novaObra()">Cadastrar primeira obra</button>':'<p style="font-size:12.5px;color:var(--gray-4)">Quem cadastra obra é o administrador ou o gerente.</p>')+'</div>';
     return;
   }
   alvo.innerHTML = view==='quadro' ? htmlQuadro(lista) : htmlLista(lista);
@@ -1019,7 +1132,11 @@ function htmlCartao(o){
 }
 
 function htmlQuadro(lista){
-  return '<div class="board">'+ETAPAS.map(e=>{
+  // Etapa inativa some do quadro, MENOS se ainda tiver obra parada nela —
+  // senão a obra desapareceria da tela junto com a coluna.
+  return '<div class="board">'+ETAPAS.filter(e=>{
+    return e.ativo!==false || lista.some(o=>o.etapa===e.id);
+  }).map(e=>{
     const its=lista.filter(o=>o.etapa===e.id);
     return '<div class="col"><div class="col-head"><span>'+esc(e.nome)+'</span><span class="col-count">'+its.length+'</span></div>'+
       '<div class="col-body">'+(its.length?its.map(htmlCartao).join(''):'<div class="col-vazia">vazia</div>')+'</div></div>';
@@ -1088,7 +1205,7 @@ function popularSelectTipo(valorAtual){
   }
 }
 
-function openTipos(){ renderTipos(); renderTiposDoc(); document.getElementById('tipos-ov').classList.add('open'); }
+function openTipos(){ renderEtapas(); renderTipos(); renderTiposDoc(); aplicarPermissoes(); document.getElementById('tipos-ov').classList.add('open'); }
 function closeTipos(){ document.getElementById('tipos-ov').classList.remove('open'); }
 
 function renderTipos(){
@@ -1125,7 +1242,7 @@ async function addTipo(){
   const nome=(inp.value||'').trim();
   if(!nome){ inp.focus(); return; }
   if(tiposDe(dados).some(function(t){ return t.label.toLowerCase()===nome.toLowerCase(); })){
-    alert('Já existe um tipo com esse nome.'); return;
+    aviso('Nome já cadastrado','Já existe um tipo com esse nome.'); return;
   }
   const ok=await alterar(function(base){
     const lista=tiposDe(base);
@@ -1145,7 +1262,7 @@ async function renomearTipo(i){
   const nome=novo.trim();
   if(nome===atual.label) return;
   if(lista.some(function(t,j){ return j!==i && t.label.toLowerCase()===nome.toLowerCase(); })){
-    alert('Já existe um tipo com esse nome.'); return;
+    aviso('Nome já cadastrado','Já existe um tipo com esse nome.'); return;
   }
   if(uso>0){
     const ok=confirm(
@@ -1192,7 +1309,7 @@ async function toggleTipo(i){
 async function removerTipo(i){
   const lista=tiposDe(dados);
   const atual=lista[i]; if(!atual) return;
-  if(usoTipo(dados,atual.label)>0){ alert('Este tipo já está em uso por alguma obra. Use Desativar.'); return; }
+  if(usoTipo(dados,atual.label)>0){ aviso('Tipo em uso','Alguma obra já usa este tipo. Em vez de excluir, use Desativar — ele sai do formulário e continua valendo nas obras antigas.'); return; }
   if(!confirm('Excluir o tipo "'+atual.label+'"?')) return;
   const alvo=atual.label;
   const ok=await alterar(function(base){
@@ -1202,16 +1319,178 @@ async function removerTipo(i){
     base.tipos=tiposDe(base).filter(function(t){ return t.label!==alvo; });
   });
   if(ok){
-    if(usoTipo(dados,alvo)>0) alert('O tipo não foi excluído: enquanto esta tela estava aberta, alguma obra passou a usá-lo.');
+    if(usoTipo(dados,alvo)>0) aviso('Tipo não excluído','Enquanto esta tela estava aberta, alguma obra passou a usar este tipo.');
     renderTipos();
   }
 }
 
-function preencherSelectEtapas(){
-  document.getElementById('f-etapa').innerHTML=ETAPAS.map(e=>'<option value="'+e.id+'">'+esc(e.nome)+'</option>').join('');
+// ---- GERENCIAR AS ETAPAS DO FLUXO ----
+// Só admin e gerente mexem aqui. O fluxo é a espinha do módulo: mudar a ordem
+// ou remover uma etapa muda o que todo mundo vê no quadro.
+
+// Um id novo, curto e que não se repete. O id nunca muda depois de criado.
+function idEtapa(nome){
+  const base=String(nome||'etapa').normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,24) || 'etapa';
+  const usados={};
+  etapasDe(dados).forEach(function(e){ usados[e.id]=1; });
+  if(!usados[base]) return base;
+  let i=2;
+  while(usados[base+'-'+i]) i++;
+  return base+'-'+i;
+}
+
+async function addEtapa(){
+  if(!podeGerenciar()) return;
+  const inp=document.getElementById('etapa-nova');
+  const inpResp=document.getElementById('etapa-nova-resp');
+  const nome=inp.value.trim();
+  if(!nome) return;
+  const resp=inpResp.value.trim()||'—';
+  const ok=await alterar(function(base){
+    const lista=etapasDe(base).map(function(e){ return Object.assign({},e); });
+    if(lista.some(function(e){ return e.nome.toLowerCase()===nome.toLowerCase(); })){
+      base.etapas=lista; return;                       // já existe, não duplica
+    }
+    lista.push({id:idEtapa(nome),nome:nome,resp:resp,ativo:true});
+    base.etapas=lista;
+  });
+  if(ok){ inp.value=''; inpResp.value=''; renderEtapas(); render(); }
+}
+
+// Sobe ou desce uma etapa no fluxo. É assim que a "Separação de Material"
+// recém-criada sai do fim e vai parar entre a OP e a Compra de Materiais.
+async function moverEtapa(id,dir){
+  if(!podeGerenciar()) return;
+  const ok=await alterar(function(base){
+    const lista=etapasDe(base).map(function(e){ return Object.assign({},e); });
+    const i=lista.findIndex(function(e){ return e.id===id; });
+    const j=i+dir;
+    if(i<0||j<0||j>=lista.length){ base.etapas=lista; return; }
+    const t=lista[i]; lista[i]=lista[j]; lista[j]=t;
+    base.etapas=lista;
+  });
+  if(ok){ renderEtapas(); render(); }
+}
+
+async function alternarEtapa(id){
+  if(!podeGerenciar()) return;
+  const ok=await alterar(function(base){
+    const lista=etapasDe(base).map(function(e){ return Object.assign({},e); });
+    const e=lista.find(function(x){ return x.id===id; });
+    if(e) e.ativo = (e.ativo===false);
+    base.etapas=lista;
+  });
+  if(ok){ renderEtapas(); render(); }
+}
+
+async function renomearEtapa(id){
+  if(!podeGerenciar()) return;
+  const atual=ETAPAS.find(function(e){ return e.id===id; });
+  if(!atual) return;
+  const nome=prompt('Nome da etapa:',atual.nome);
+  if(nome===null) return;
+  const resp=prompt('Responsável por esta etapa:',atual.resp||'');
+  if(resp===null) return;
+  const ok=await alterar(function(base){
+    const lista=etapasDe(base).map(function(e){ return Object.assign({},e); });
+    const e=lista.find(function(x){ return x.id===id; });
+    // O id fica como está de propósito: as obras guardam o id, e trocá-lo
+    // faria cada obra apontar para uma etapa que não existe.
+    if(e){ e.nome=nome.trim()||e.nome; e.resp=resp.trim()||'—'; }
+    base.etapas=lista;
+  });
+  if(ok){ renderEtapas(); render(); }
+}
+
+async function excluirEtapa(id){
+  if(!podeGerenciar()) return;
+  const uso=usoEtapa(dados,id);
+  if(uso){
+    aviso('Etapa em uso','Esta etapa tem '+uso+' obra(s) dentro.\n\n'+
+          'Excluir agora deixaria essas obras apontando para uma etapa que não existe. '+
+          'Mova as obras para outra etapa primeiro, ou apenas INATIVE — assim ela some '+
+          'do quadro quando a última obra sair.');
+    return;
+  }
+  const e=ETAPAS.find(function(x){ return x.id===id; });
+  if(!confirm('Excluir a etapa "'+((e&&e.nome)||id)+'"?\n\nEla não tem obra nenhuma.')) return;
+  const ok=await alterar(function(base){
+    // Confere de novo com o dado do servidor: alguém pode ter movido uma obra
+    // para cá enquanto esta tela estava aberta.
+    if(usoEtapa(base,id)>0){ base.etapas=etapasDe(base); return; }
+    base.etapas=etapasDe(base).filter(function(x){ return x.id!==id; });
+  });
+  if(ok){
+    if(usoEtapa(dados,id)>0) aviso('Etapa não excluída','Enquanto esta tela estava aberta, alguma obra passou a usar esta etapa.');
+    renderEtapas(); render();
+  }
+}
+
+
+// Esconde da tela o que só admin e gerente podem fazer. A trava de verdade
+// não é esconder o botão — é a checagem dentro de cada função, que continua
+// valendo mesmo se alguém abrir o console e chamar direto.
+function aplicarPermissoes(){
+  const pode=podeGerenciar();
+  const sec=document.getElementById("secao-etapas");
+  if(sec) sec.style.display = pode ? "" : "none";
+  document.querySelectorAll("[data-so-gestor]").forEach(function(el){
+    el.style.display = pode ? "" : "none";
+  });
+}
+
+function renderEtapas(){
+  const el=document.getElementById('etapas-lista');
+  if(!el) return;
+  const lista=ETAPAS;
+  el.innerHTML=lista.map(function(e,i){
+    const uso=usoEtapa(dados,e.id);
+    const off=e.ativo===false;
+    return '<div style="display:flex;align-items:center;gap:6px;padding:7px 4px;'+
+      'border-bottom:1px solid var(--gray-2);'+(off?'opacity:.55':'')+'">'+
+      '<div style="display:flex;flex-direction:column;gap:1px">'+
+        '<button type="button" onclick="moverEtapa(\''+e.id+'\',-1)" title="Subir"'+
+          ' style="border:1px solid var(--gray-3);background:#fff;border-radius:4px;cursor:pointer;'+
+          'font-size:9px;line-height:1;padding:2px 4px"'+(i===0?' disabled':'')+'>&#9650;</button>'+
+        '<button type="button" onclick="moverEtapa(\''+e.id+'\',1)" title="Descer"'+
+          ' style="border:1px solid var(--gray-3);background:#fff;border-radius:4px;cursor:pointer;'+
+          'font-size:9px;line-height:1;padding:2px 4px"'+(i===lista.length-1?' disabled':'')+'>&#9660;</button>'+
+      '</div>'+
+      '<span style="width:20px;text-align:right;font-size:11px;color:var(--gray-4)">'+(i+1)+'</span>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(e.nome)+
+          (e.orfa?' <span style="color:#c0392b;font-size:10px">órfã</span>':'')+'</div>'+
+        '<div style="font-size:10.5px;color:var(--gray-4)">'+esc(e.resp||'—')+' · '+
+          (uso?uso+' obra(s)':'vazia')+(off?' · inativa':'')+'</div>'+
+      '</div>'+
+      '<button type="button" onclick="renomearEtapa(\''+e.id+'\')" title="Renomear"'+
+        ' style="border:0;background:transparent;cursor:pointer;font-size:13px;padding:0 3px">&#9998;</button>'+
+      '<button type="button" onclick="alternarEtapa(\''+e.id+'\')" title="'+(off?'Ativar':'Inativar')+'"'+
+        ' style="border:0;background:transparent;cursor:pointer;font-size:13px;padding:0 3px">'+(off?'&#9744;':'&#9745;')+'</button>'+
+      '<button type="button" onclick="excluirEtapa(\''+e.id+'\')" title="Excluir"'+
+        ' style="border:0;background:transparent;cursor:pointer;font-size:15px;padding:0 3px;color:'+
+        (uso?'var(--gray-3)':'#c0392b')+'">&times;</button>'+
+      '</div>';
+  }).join('');
+}
+
+function preencherSelectEtapas(etapaAtualDaFicha){
+  // Só etapas ativas viram opção. A etapa em que a obra já está entra mesmo se
+  // estiver inativa — senão abrir e salvar a obra a moveria sozinha.
+  document.getElementById('f-etapa').innerHTML=ETAPAS
+    .filter(function(e){ return e.ativo!==false || e.id===etapaAtualDaFicha; })
+    .map(e=>'<option value="'+e.id+'">'+esc(e.nome)+(e.ativo===false?' (inativa)':'')+'</option>').join('');
 }
 
 function novaObra(){
+  // A trava de verdade fica aqui, nao no botao escondido.
+  if(!podeGerenciar()){
+    aviso('Só administrador ou gerente',
+          'Cadastrar obra é coisa do administrador ou do gerente.\n\n' +
+          'Você pode consultar e movimentar as obras que já existem.');
+    return;
+  }
   fichaId=null;
   fichaBase=null;
   document.getElementById('ficha-titulo').textContent='Nova obra';
@@ -1220,7 +1499,9 @@ function novaObra(){
   popularSelectTipo('');
   document.getElementById('f-resp').value='';
   document.getElementById('f-prazo').value='';
-  document.getElementById('f-etapa').value=ETAPAS[0].id;
+  preencherSelectEtapas('');
+  const _primeira=ETAPAS.filter(function(e){ return e.ativo!==false; })[0]||ETAPAS[0];
+  document.getElementById('f-etapa').value=_primeira?_primeira.id:'';
   document.getElementById('f-obs').value='';
   fichaDocs=[];
   popularSelectDoc();
@@ -1247,7 +1528,8 @@ function abrirFicha(id){
   popularSelectTipo(o.tipo||'');
   document.getElementById('f-resp').value=o.responsavel||'';
   document.getElementById('f-prazo').value=o.prazo||'';
-  document.getElementById('f-etapa').value=o.etapa||ETAPAS[0].id;
+  preencherSelectEtapas(o.etapa||'');
+  document.getElementById('f-etapa').value=o.etapa||(ETAPAS[0]&&ETAPAS[0].id)||'';
   document.getElementById('f-obs').value=o.obs||'';
   fichaDocs=Array.isArray(o.docs)?JSON.parse(JSON.stringify(o.docs)):[];
   popularSelectDoc();
@@ -1400,7 +1682,7 @@ async function salvarFicha(){
   // Cliente e identificacao da obra sao obrigatorios: sem eles nao da para
   // saber de qual obra o lancamento e. Avisa e nao grava nada.
   if(!cliente||!obra){
-    alert('Faltam dados obrigatórios:\n\n'+
+    aviso('Faltam dados obrigatórios',
           (!cliente?'• Cliente\n':'')+(!obra?'• Contrato (CT)\n':'')+
           '\nPreencha e salve de novo. Nada foi alterado.');
     (!cliente?document.getElementById('f-cliente'):document.getElementById('f-obra')).focus();
@@ -1584,7 +1866,7 @@ function mostrarLogin(){
     btn.disabled=true; btn.textContent='Entrando...';
     try{
       const r=await fazerLogin(u,s);
-      abrirApp(r.nome||r.username||u);
+      abrirApp(r.nome||r.username||u, r.role);
     }catch(e){
       // 401 é senha errada; qualquer outro número é problema de conexão ou de
       // configuração do Worker — separar os dois evita caça ao erro errado.
@@ -1600,19 +1882,28 @@ function mostrarLogin(){
   });
 }
 
-function abrirApp(nome){
+function abrirApp(nome,papelDoUsuario){
   usuario=nome;
+  papel=String(papelDoUsuario||'').toLowerCase();
   document.getElementById('bloqueio').style.display='none';
   document.getElementById('app').style.display='block';
   // O botão Sair aparece sempre: ele encerra tanto o crachá quanto a sessão
   // do portal, então funciona nos dois casos de entrada.
   document.getElementById('btn-sair').style.display='';
   preencherSelectEtapas();
+  aplicarPermissoes();
   lerLocal();
   try{ const v=localStorage.getItem('dalum-fabrica-view'); if(v) view=v; }catch(e){}
   if(window.innerWidth<760 && !localStorage.getItem('dalum-fabrica-view')) view='lista';
   setView(view);
   sincronizar();
+  // Clicar fora ou apertar Esc fecha o aviso. Os dois caminhos passam por
+  // fecharAviso(), então o que ficou pendente em `aoFechar` acontece igual —
+  // é o que garante que a sessão expirada recarregue a página de qualquer jeito.
+  document.getElementById('aviso-ov').addEventListener('click',function(e){ if(e.target===this) fecharAviso(); });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape' && document.getElementById('aviso-ov').classList.contains('open')) fecharAviso();
+  });
   document.getElementById('ficha-ov').addEventListener('click',function(e){ if(e.target===this) fecharFicha(); });
   document.getElementById('tipos-ov').addEventListener('click',function(e){ if(e.target===this) closeTipos(); });
 
@@ -1627,11 +1918,11 @@ function abrirApp(nome){
 (function iniciar(){
   // 1) Crachá do próprio módulo, se ainda estiver no prazo.
   const t=lerToken();
-  if(t){ abrirApp(t.dados.n||t.dados.u||'usuário'); return; }
+  if(t){ abrirApp(t.dados.n||t.dados.u||'usuário', t.dados.r); return; }
   // 2) Sessão do portal, como sempre funcionou. Mantido para quem entra pelo
   //    portal não ter de digitar a senha duas vezes.
   const sso=lerSSO();
-  if(sso){ abrirApp(sso.nome); return; }
+  if(sso){ abrirApp(sso.nome, sso.role); return; }
   // 3) Sem nenhum dos dois: pede login aqui mesmo.
   mostrarLogin();
 })();

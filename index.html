@@ -655,9 +655,9 @@ let fichaBase=null;
 // ================= SESSÃO =================
 function lerSSO(){
   try{
-    const s=JSON.parse(localStorage.getItem('dalum-sso')||'null');
+    const s=JSON.parse(loginGuardaLer('dalum-sso')||'null');
     if(!s||!s.nome) return null;
-    if(Date.now()-s.ts>8*60*60*1000){ localStorage.removeItem('dalum-sso'); return null; }
+    if(Date.now()-s.ts>8*60*60*1000){ loginGuardaApagar('dalum-sso'); return null; }
     return s;
   }catch(e){ return null; }
 }
@@ -669,6 +669,36 @@ function lerSSO(){
 // mexer neste arquivo não dá acesso a nada: sem assinatura válida o Worker
 // recusa (a partir da etapa em que ele passar a exigir o crachá).
 const TOKEN_KEY='dalum-token';
+
+// ---- ONDE O CRACHA E A SESSAO FICAM GUARDADOS (24/09/2026) ----
+// O cracha do ADMIN fica so na ABA. Antes ficava no navegador, valendo 8
+// horas: o admin usava um computador, esquecia de sair, e qualquer pessoa
+// daquele navegador entrava como admin so atualizando a pagina — sem digitar
+// senha nenhuma. Na aba, fechou = acabou.
+// Para os demais usuarios nada muda: segue no navegador, e quem entrou de
+// manha continua entrando direto o dia todo.
+// De quebra: como o admin nao escreve no navegador, a janela de quem ja
+// estava logado continua com o cracha dela.
+function loginGuardaLer(chave){
+  try{ const v=sessionStorage.getItem(chave); if(v!==null) return v; }catch(e){}
+  try{ return localStorage.getItem(chave); }catch(e){ return null; }
+}
+function loginGuardaGravar(chave, valor, soNestaAba){
+  try{ sessionStorage.setItem(chave, valor); }catch(e){}
+  // O admin nao grava no navegador — e nao apaga o que ja esta la, que seria
+  // derrubar quem estiver logado em outra janela.
+  if(!soNestaAba){ try{ localStorage.setItem(chave, valor); }catch(e){} }
+}
+function loginGuardaApagar(chave){
+  let meu=null;
+  try{ meu=sessionStorage.getItem(chave); }catch(e){}
+  try{ sessionStorage.removeItem(chave); }catch(e){}
+  try{
+    // So apaga o que esta no navegador se for o MESMO desta aba: numa aba de
+    // admin, o que esta guardado no navegador e de outra pessoa.
+    if(meu===null || localStorage.getItem(chave)===meu) localStorage.removeItem(chave);
+  }catch(e){}
+}
 
 // LGPD (auditoria de 18/09/2026): ao sair, apaga a copia dos dados guardada no
 // navegador. Antes o Sair tirava so o cracha — os contratos (com CPF), as
@@ -695,14 +725,14 @@ function b64urlParaTexto(s){
 
 function lerToken(){
   try{
-    const t=localStorage.getItem(TOKEN_KEY);
+    const t=loginGuardaLer(TOKEN_KEY);
     if(!t) return null;
     const partes=t.split('.');
     if(partes.length!==2) return null;
     const d=JSON.parse(b64urlParaTexto(partes[0]));
-    if(!d||!d.exp||Date.now()>=d.exp){ localStorage.removeItem(TOKEN_KEY); return null; }
+    if(!d||!d.exp||Date.now()>=d.exp){ loginGuardaApagar(TOKEN_KEY); return null; }
     return {token:t,dados:d};
-  }catch(e){ localStorage.removeItem(TOKEN_KEY); return null; }
+  }catch(e){ loginGuardaApagar(TOKEN_KEY); return null; }
 }
 
 // Cabeçalhos de toda conversa com o Worker. Quando há crachá, ele vai junto.
@@ -733,7 +763,8 @@ async function fazerLogin(user,senha){
     e.status=r.status;
     throw e;
   }
-  localStorage.setItem(TOKEN_KEY,j.token);
+  // O cracha do admin nao fica guardado no navegador: so nesta aba.
+  loginGuardaGravar(TOKEN_KEY,j.token,String(j.role||'').toLowerCase()==='admin');
   return j;
 }
 
@@ -1103,7 +1134,23 @@ async function enviarRelato(){
 // ================= SESSÃO NO PAINEL DO PORTAL =================
 // Identifica ESTA aba. Some quando a aba fecha, que é o que se quer: cada aba
 // aberta é um período de trabalho.
-const _sessionIdFab='fab-'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+// A identidade desta TELA vive na memoria da ABA, e nao e sorteada a cada
+// carregamento. Assim, recarregar a pagina continua sendo a MESMA tela — era
+// o defeito de 24/09/2026, em que o F5 virava "outra sessao" — enquanto abrir
+// uma aba nova conta como outro lugar, e a regra de um acesso por usuario
+// derruba a anterior. O modulo aberto dentro do portal divide a memoria da
+// aba, entao portal e modulo sao a mesma linha na lista de sessoes.
+function idDestaTela(){
+  try{
+    // Na memoria da ABA: sobrevive ao F5 (era o defeito original) e nao
+    // atravessa para outra aba — duas abas sao duas telas, e a regra de um
+    // acesso por usuario derruba a anterior, como sempre foi.
+    let i=sessionStorage.getItem('dalum-sessao');
+    if(!i){ i=Math.random().toString(36).slice(2)+Date.now().toString(36); sessionStorage.setItem('dalum-sessao',i); }
+    return i;
+  }catch(e){ return 'tela'+Date.now(); }
+}
+const _sessionIdFab=idDestaTela();
 let _checkFab=null;
 
 // ---- ANEXOS PRIVADOS (auditoria de LGPD, item 6, 21/09/2026) ----
@@ -1298,106 +1345,45 @@ function cabecalhosSessoesFab(extra){
 }
 
 // Fecha uma sessão guardando quanto tempo durou. Igual ao dos outros módulos.
-function encerrarNaListaFab(d, sessionId, motivo){
-  const i=(d.ativas||[]).findIndex(function(s){ return s.sessionId===sessionId; });
-  if(i<0) return false;
-  const s=d.ativas[i];
-  d.ativas.splice(i,1);
-  const inicio=s.inicio||s.ts||Date.now();
-  // Quem parou de dar sinal fecha na hora do ÚLTIMO sinal, não agora.
-  const fim=(motivo==='parou')?(s.ts||inicio):Date.now();
-  d.encerradas=[{sessionId:s.sessionId,username:s.username||'',nome:s.nome||'',
-    sistema:s.sistema||'',inicio:inicio,fim:fim,
-    minutos:Math.max(0,Math.round((fim-inicio)/60000)),motivo:motivo}]
-    .concat(d.encerradas||[]).slice(0,500);
-  return true;
-}
-function limparParadasFab(d){
-  const LIMITE=60*60*1000, agora=Date.now();
-  let mexeu=false;
-  (d.ativas||[]).slice().forEach(function(s){
-    if(agora-(s.ts||0)>=LIMITE && encerrarNaListaFab(d,s.sessionId,'parou')) mexeu=true;
+// encerrarNaListaFab e limparParadasFab sairam daqui: fechar sessao e limpar
+// quem parou viraram conta do Worker. Esta tela so fala da propria sessao.
+async function acaoSessaoFab(nome, corpo){
+  const r=await fetch(WORKER,{
+    method:'POST',
+    headers:cabecalhosSessoesFab({'Content-Type':'application/json','X-Action':nome}),
+    body:JSON.stringify(Object.assign({sessionId:_sessionIdFab, ambiente:AMBIENTE_FAB}, corpo||{}))
   });
-  return mexeu;
+  if(!r.ok) throw Object.assign(new Error('worker '+r.status),{status:r.status});
+  return r.json();
 }
 
+
 async function registrarSessaoFab(nome, username){
-  try{
-    const r=await fetch(WORKER,{headers:cabecalhosSessoesFab()});
-    if(!r.ok) return;
-    const d=await r.json();
-    const u=(username||nome||'').toLowerCase().trim();
-    const ativas=(d.ativas||[]).filter(function(s){
-      return s.sessionId!==_sessionIdFab && !((s.username||'').toLowerCase().trim()===u && s.sistema==='fabrica' && mesmoAmbienteFab(s));
-    });
-    ativas.push({sessionId:_sessionIdFab,username:u,nome:nome,sistema:'fabrica',ambiente:AMBIENTE_FAB,ts:Date.now(),inicio:Date.now()});
-    d.ativas=ativas;
-    await fetch(WORKER,{method:'PATCH',
-      headers:cabecalhosSessoesFab({'Content-Type':'application/json'}),
-      body:JSON.stringify({data:d})});
-  }catch(e){}
+  try{ await acaoSessaoFab('sessao-entrar',{sistema:'fabrica'}); }catch(e){}
 }
 
 async function removerSessaoFab(){
-  try{
-    const r=await fetch(WORKER,{headers:cabecalhosSessoesFab()});
-    if(!r.ok) return;
-    const d=await r.json();
-    encerrarNaListaFab(d,_sessionIdFab,'saiu');
-    await fetch(WORKER,{method:'PATCH',
-      headers:cabecalhosSessoesFab({'Content-Type':'application/json'}),
-      body:JSON.stringify({data:d})});
-  }catch(e){}
+  try{ await acaoSessaoFab('sessao-sair',{}); }catch(e){}
 }
 
 // A cada 30 segundos: confere se o admin mandou deslogar e renova o sinal de
 // vida. A gravação só acontece quando o carimbo passa de 5 minutos.
 async function checkForceLogoutFab(){
-  try{
-    const r=await fetch(WORKER,{headers:cabecalhosSessoesFab()});
-    if(!r.ok) return;
-    const d=await r.json();
-    const forcados=(d.forceLogout||[]);
-    if(forcados.indexOf(_sessionIdFab)>=0){
-      // O motivo vem junto do portal. Sem ele a pessoa lia "encerrada pelo
-      // administrador" mesmo quando o administrador nao tinha feito nada.
-      const motivo=(d.forceLogoutMotivo||{})[_sessionIdFab]==='outro-login'?'outro-login':'deslogado';
-      d.forceLogout=forcados.filter(function(x){ return x!==_sessionIdFab; });
-      if(d.forceLogoutMotivo) delete d.forceLogoutMotivo[_sessionIdFab];
-      encerrarNaListaFab(d,_sessionIdFab,motivo);
-      await fetch(WORKER,{method:'PATCH',
-        headers:cabecalhosSessoesFab({'Content-Type':'application/json'}),
-        body:JSON.stringify({data:d})});
-      alert(motivo==='outro-login'
-        ?'Sua sessão foi encerrada porque este usuário entrou em outro navegador.'
-        :'Sua sessão foi encerrada pelo administrador.');
-      localStorage.removeItem(TOKEN_KEY); localStorage.removeItem('dalum-sso'); apagarDadosLocais();
-      location.reload();
-      return;
-    }
-    const AGORA=Date.now(), CADA=5*60*1000;
-    let precisaGravar=limparParadasFab(d);
-    const eu=(d.ativas||[]).find(function(s){ return s.sessionId===_sessionIdFab; });
-    if(eu){
-      if(AGORA-(eu.ts||0)>CADA){ eu.ts=AGORA; precisaGravar=true; }
-    } else {
-      d.ativas=(d.ativas||[]).concat([{sessionId:_sessionIdFab,
-        username:(usuario||'').toLowerCase().trim(), nome:usuario,
-        sistema:'fabrica', ambiente:AMBIENTE_FAB, ts:AGORA, inicio:AGORA}]);
-      precisaGravar=true;
-    }
-    if(!precisaGravar) return;
-    await fetch(WORKER,{method:'PATCH',
-      headers:cabecalhosSessoesFab({'Content-Type':'application/json'}),
-      body:JSON.stringify({data:d})});
-  }catch(e){}
+  let r=null;
+  try{ r=await acaoSessaoFab('sessao-sinal',{sistema:'fabrica'}); }catch(e){ return; }
+  if(!r||!r.derrubado) return;
+  alert(r.motivo==='outro-login'
+    ?'Sua sessão foi encerrada porque este usuário entrou em outro navegador.'
+    :'Sua sessão foi encerrada pelo administrador.');
+  loginGuardaApagar(TOKEN_KEY); loginGuardaApagar('dalum-sso'); apagarDadosLocais();
+  location.reload();
 }
 
 async function sairDaFabrica(){
   if(!confirm('Deseja sair?')) return;
   await removerSessaoFab();
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem('dalum-sso');
+  loginGuardaApagar(TOKEN_KEY);
+  loginGuardaApagar('dalum-sso');
   apagarDadosLocais();
   // Dentro do portal, avisa a moldura para ela encerrar a sessão de lá também
   // — igual ao Compras e ao Financeiro. Sem isso, sair aqui deixava o portal
@@ -1448,7 +1434,7 @@ function fecharAviso(){
 function sessaoExpirada(){
   if(window.__sessaoExpirada) return;   // um aviso só, mesmo com várias chamadas
   window.__sessaoExpirada = true;
-  try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem('dalum-sso'); }catch(e){} apagarDadosLocais();
+  try{ loginGuardaApagar(TOKEN_KEY); loginGuardaApagar('dalum-sso'); }catch(e){} apagarDadosLocais();
   aviso('Sessão expirada',
         'O acesso vale 8 horas e o seu venceu. Nada foi perdido — o que você ' +
         'já tinha salvo continua guardado.\n\n' +
@@ -2873,30 +2859,24 @@ function setView(v){
 let _sessoesHist=null;
 async function carregarSessoesHist(){
   try{
-    // 'sessions' e um registro proprio no banco, separado do da fabrica — por
-    // isso o cabecalho X-Sistema vai trocado aqui.
-    const r=await fetch(WORKER,{headers:Object.assign(cabecalhos(),{'X-Sistema':'sessions'})});
-    if(!r.ok){ _sessoesHist=[]; return; }
-    const d=await r.json();
+    // So o administrador ve quem usou o sistema e por quanto tempo (pedido do
+    // Ander, 24/09/2026). Para os demais o Worker recusa, e o historico fica
+    // so com as alteracoes do modulo.
+    const d=await acaoSessaoFab('sessao-lista',{});
     const agora=Date.now();
-    const dur=function(m){ m=Math.max(0,Math.round(m)); if(m<1) return 'menos de 1 min';
+    const dur=m=>{ m=Math.max(0,Math.round(m)); if(m<1) return 'menos de 1 min';
       if(m<60) return m+' min'; const h=Math.floor(m/60), x=m%60; return h+'h'+(x?String(x).padStart(2,'0'):''); };
-    const hora=function(t){ return new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); };
-    const motivo={saiu:'saiu pelo botão',deslogado:'deslogado pelo admin',parou:'parou de usar'};
+    const hora=t=>new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const motivo={saiu:'saiu pelo botão',deslogado:'deslogado pelo admin',parou:'parou de usar','outro-login':'entrou em outro lugar'};
     _sessoesHist=[]
-      .concat((d.encerradas||[]).filter(function(s){ return s.sistema==='fabrica'; }).map(function(s){
-        return { ts:new Date(s.fim).toISOString(), user:s.nome||'—', acao:'Uso do sistema',
-                 alvo:hora(s.inicio)+' → '+hora(s.fim),
-                 detalhe:dur(s.minutos)+' · '+(motivo[s.motivo]||s.motivo||'') }; }))
-      // Sessão sem sinal há mais de 1 hora não está "em andamento": ela conta
-      // até o último sinal. Sem isto, quem fechou o navegador de manhã
-      // apareceria trabalhando o dia inteiro.
-      .concat((d.ativas||[]).filter(function(s){ return s.sistema==='fabrica'; }).map(function(s){
-        const parado=agora-(s.ts||agora)>=60*60*1000;
-        const fim=parado?(s.ts||agora):agora, ini=s.inicio||s.ts;
-        return { ts:new Date(fim).toISOString(), user:s.nome||'—', acao:'Uso do sistema',
-                 alvo:hora(ini)+' → '+(parado?hora(fim):'agora'),
-                 detalhe:dur((fim-ini)/60000)+' · '+(parado?'parou de usar':'em andamento') }; }));
+      .concat((d.encerradas||[]).filter(s=>s.sistema==='fabrica').map(s=>({
+        ts:new Date(s.fim).toISOString(), user:s.nome||'—', action:'Uso do sistema',
+        obra:hora(s.inicio)+' → '+hora(s.fim), detail:dur(s.minutos)+' · '+(motivo[s.motivo]||s.motivo||'') })))
+      .concat((d.ativas||[]).filter(s=>s.sistema==='fabrica').map(s=>{
+        const ini=s.inicio||s.ts;
+        return {ts:new Date(agora).toISOString(), user:s.nome||'—', action:'Uso do sistema',
+          obra:hora(ini)+' → agora', detail:dur((agora-ini)/60000)+' · em andamento'};
+      }));
   }catch(e){ _sessoesHist=[]; }
 }
 
